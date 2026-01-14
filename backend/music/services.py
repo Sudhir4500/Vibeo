@@ -66,26 +66,29 @@ def youtube_search(query):
 
 # Function for getting audio stream url
 def get_audio_stream_url(video_id):
-    """
-    Get direct audio stream URL from YouTube video
-    """
     video_url = f"https://www.youtube.com/watch?v={video_id}"
+    
     dl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': False,
         'skip_download': True,
-        'youtube_include_dash_manifest': False,
-        # Use mobile clients that don't require authentication
+        
+        # KEY SETTINGS FOR RENDER/DATA CENTERS:
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios'],
+                # We skip the 'web' client entirely because it triggers the bot check
+                'player_client': ['android', 'ios'], 
                 'player_skip': ['webpage', 'configs'],
             }
         },
+        # Use a mobile-specific User-Agent
+        'http_headers': {
+            'User-Agent': 'com.google.android.youtube/19.29.37 (Linux; U; Android 11) gzip',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
     }
-    
+
     try:
         with yt_dlp.YoutubeDL(dl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
