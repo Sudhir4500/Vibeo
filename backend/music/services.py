@@ -77,7 +77,13 @@ def get_audio_stream_url(video_id):
         'extract_flat': False,
         'skip_download': True,
         'youtube_include_dash_manifest': False,
-        'cookiesfrombrowser': ('chrome',),  # or 'firefox', 'edge', 'safari', etc.
+        # Use mobile clients that don't require authentication
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios'],
+                'player_skip': ['webpage', 'configs'],
+            }
+        },
     }
     
     try:
@@ -114,6 +120,12 @@ def get_recommendations(video_id, title, artist=""):
         'quiet': True,
         'no_warnings': True,
         'playlist_end': 20,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios'],
+                'player_skip': ['webpage', 'configs'],
+            }
+        },
     }
     
     all_results = []
