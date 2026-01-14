@@ -77,6 +77,7 @@ def get_audio_stream_url(video_id):
         'extract_flat': False,
         'skip_download': True,
         'youtube_include_dash_manifest': False,
+        'cookiesfrombrowser': ('chrome',),  # or 'firefox', 'edge', 'safari', etc.
     }
     
     try:
