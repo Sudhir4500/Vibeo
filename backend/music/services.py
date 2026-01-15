@@ -5,20 +5,18 @@ from youtubesearchpython import VideosSearch
 
 # ==================== CONFIGURATION ====================
 
-# Invidious instances (public, no auth required)
+# Updated working Invidious instances (tested and verified)
 INVIDIOUS_INSTANCES = [
     'https://inv.nadeko.net',
-    'https://invidious.fdn.fr',
-    'https://invidious.protokolla.fi',
-    'https://inv.riverside.rocks',
-    'https://yt.artemislena.eu',
+    'https://iv.ggtyler.dev',
+    'https://invidious.privacyredirect.com',
+    'https://inv.tux.pizza',
+    'https://yewtu.be',
 ]
 
-# Piped instances (backup)
+# Updated Piped instances
 PIPED_INSTANCES = [
     'https://pipedapi.kavin.rocks',
-    'https://api.piped.projectsegfau.lt',
-    'https://pipedapi.adminforge.de',
 ]
 
 # ==================== SEARCH ====================
@@ -27,25 +25,7 @@ def youtube_search(query):
     """
     Search for videos using multiple methods with fallbacks
     """
-    # Method 1: Try Invidious API (fast and reliable)
-    try:
-        results = search_with_invidious(query)
-        if results:
-            print(f"✅ Invidious search successful: {len(results)} results")
-            return results
-    except Exception as e:
-        print(f"⚠️ Invidious search failed: {e}")
-    
-    # Method 2: Try Piped API
-    try:
-        results = search_with_piped(query)
-        if results:
-            print(f"✅ Piped search successful: {len(results)} results")
-            return results
-    except Exception as e:
-        print(f"⚠️ Piped search failed: {e}")
-    
-    # Method 3: Fallback to youtubesearchpython (may fail on Render)
+    # Method 1: Try youtubesearchpython first (fastest when it works)
     try:
         results = search_with_youtube_search_python(query)
         if results:
@@ -54,127 +34,26 @@ def youtube_search(query):
     except Exception as e:
         print(f"⚠️ YouTubeSearchPython failed: {e}")
     
+    # Method 2: Try Invidious API
+    try:
+        results = search_with_invidious(query)
+        if results:
+            print(f"✅ Invidious search successful: {len(results)} results")
+            return results
+    except Exception as e:
+        print(f"⚠️ Invidious search failed: {e}")
+    
+    # Method 3: Try Piped API
+    try:
+        results = search_with_piped(query)
+        if results:
+            print(f"✅ Piped search successful: {len(results)} results")
+            return results
+    except Exception as e:
+        print(f"⚠️ Piped search failed: {e}")
+    
     print("❌ All search methods failed")
     return []
-
-
-def search_with_invidious(query):
-    """Search using Invidious API"""
-    for instance in INVIDIOUS_INSTANCES:
-        try:
-            response = requests.get(
-                f'{instance}/api/v1/search',
-                params={
-                    'q': query,
-                    'type': 'video',
-                    'sort_by': 'relevance',
-                    'page': 1
-                },
-                timeout=10,
-                headers={'User-Agent': 'Mozilla/5.0'}
-            )
-            
-            if response.status_code == 200:
-                results = response.json()
-                
-                cleaned_results = []
-                for item in results[:10]:
-                    try:
-                        video_id = item.get('videoId', '')
-                        if not video_id:
-                            continue
-                        
-                        # Get best thumbnail
-                        thumbnails = item.get('videoThumbnails', [])
-                        thumbnail = ''
-                        if thumbnails:
-                            # Try to get high quality thumbnail
-                            for t in thumbnails:
-                                if t.get('quality') in ['high', 'maxres', 'sddefault']:
-                                    thumbnail = t.get('url', '')
-                                    break
-                            if not thumbnail:
-                                thumbnail = thumbnails[0].get('url', '')
-                        
-                        # Format duration
-                        duration_seconds = item.get('lengthSeconds', 0)
-                        duration = format_duration(duration_seconds)
-                        
-                        cleaned_results.append({
-                            'id': video_id,
-                            'title': item.get('title', 'Unknown Title'),
-                            'thumbnail': thumbnail or f'https://i.ytimg.com/vi/{video_id}/hqdefault.jpg',
-                            'duration': duration,
-                            'artist': item.get('author', 'Unknown Artist'),
-                        })
-                    except Exception as e:
-                        print(f"Error processing Invidious item: {e}")
-                        continue
-                
-                if cleaned_results:
-                    return cleaned_results
-        
-        except Exception as e:
-            print(f"Invidious instance {instance} failed: {e}")
-            continue
-    
-    raise Exception("All Invidious instances failed")
-
-
-def search_with_piped(query):
-    """Search using Piped API"""
-    for instance in PIPED_INSTANCES:
-        try:
-            response = requests.get(
-                f'{instance}/search',
-                params={
-                    'q': query,
-                    'filter': 'all'  # or 'music_songs' for music only
-                },
-                timeout=10,
-                headers={'User-Agent': 'Mozilla/5.0'}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                results = data.get('items', [])
-                
-                cleaned_results = []
-                for item in results[:10]:
-                    try:
-                        # Extract video ID from URL
-                        url = item.get('url', '')
-                        video_id = url.replace('/watch?v=', '')
-                        
-                        if not video_id or video_id == url:
-                            continue
-                        
-                        # Format duration
-                        duration_seconds = item.get('duration', 0)
-                        if duration_seconds == -1:  # Live stream
-                            duration = 'LIVE'
-                        else:
-                            duration = format_duration(duration_seconds)
-                        
-                        cleaned_results.append({
-                            'id': video_id,
-                            'title': item.get('title', 'Unknown Title'),
-                            'thumbnail': item.get('thumbnail', f'https://i.ytimg.com/vi/{video_id}/hqdefault.jpg'),
-                            'duration': duration,
-                            'artist': item.get('uploaderName', 'Unknown Artist'),
-                        })
-                    except Exception as e:
-                        print(f"Error processing Piped item: {e}")
-                        continue
-                
-                if cleaned_results:
-                    return cleaned_results
-        
-        except Exception as e:
-            print(f"Piped instance {instance} failed: {e}")
-            continue
-    
-    raise Exception("All Piped instances failed")
 
 
 def search_with_youtube_search_python(query):
@@ -230,6 +109,115 @@ def search_with_youtube_search_python(query):
         raise
 
 
+def search_with_invidious(query):
+    """Search using Invidious API"""
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            response = requests.get(
+                f'{instance}/api/v1/search',
+                params={
+                    'q': query,
+                    'type': 'video',
+                    'sort_by': 'relevance',
+                    'page': 1
+                },
+                timeout=8,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            )
+            
+            if response.status_code == 200:
+                results = response.json()
+                
+                cleaned_results = []
+                for item in results[:10]:
+                    try:
+                        video_id = item.get('videoId', '')
+                        if not video_id:
+                            continue
+                        
+                        # Get best thumbnail
+                        thumbnails = item.get('videoThumbnails', [])
+                        thumbnail = f'https://i.ytimg.com/vi/{video_id}/hqdefault.jpg'
+                        if thumbnails:
+                            for t in thumbnails:
+                                if t.get('quality') in ['high', 'maxres', 'sddefault']:
+                                    thumbnail = t.get('url', thumbnail)
+                                    break
+                        
+                        # Format duration
+                        duration_seconds = item.get('lengthSeconds', 0)
+                        duration = format_duration(duration_seconds)
+                        
+                        cleaned_results.append({
+                            'id': video_id,
+                            'title': item.get('title', 'Unknown Title'),
+                            'thumbnail': thumbnail,
+                            'duration': duration,
+                            'artist': item.get('author', 'Unknown Artist'),
+                        })
+                    except Exception as e:
+                        continue
+                
+                if cleaned_results:
+                    return cleaned_results
+        
+        except Exception as e:
+            print(f"Invidious instance {instance} failed: {str(e)[:100]}")
+            continue
+    
+    raise Exception("All Invidious instances failed")
+
+
+def search_with_piped(query):
+    """Search using Piped API"""
+    for instance in PIPED_INSTANCES:
+        try:
+            response = requests.get(
+                f'{instance}/search',
+                params={'q': query, 'filter': 'all'},
+                timeout=8,
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                results = data.get('items', [])
+                
+                cleaned_results = []
+                for item in results[:10]:
+                    try:
+                        url = item.get('url', '')
+                        video_id = url.replace('/watch?v=', '')
+                        
+                        if not video_id or video_id == url:
+                            continue
+                        
+                        duration_seconds = item.get('duration', 0)
+                        if duration_seconds == -1:
+                            duration = 'LIVE'
+                        else:
+                            duration = format_duration(duration_seconds)
+                        
+                        cleaned_results.append({
+                            'id': video_id,
+                            'title': item.get('title', 'Unknown Title'),
+                            'thumbnail': item.get('thumbnail', f'https://i.ytimg.com/vi/{video_id}/hqdefault.jpg'),
+                            'duration': duration,
+                            'artist': item.get('uploaderName', 'Unknown Artist'),
+                        })
+                    except Exception as e:
+                        continue
+                
+                if cleaned_results:
+                    return cleaned_results
+        
+        except Exception as e:
+            print(f"Piped instance {instance} failed: {str(e)[:100]}")
+            continue
+    
+    raise Exception("All Piped instances failed")
+
+
 def format_duration(seconds):
     """Convert seconds to MM:SS or HH:MM:SS format"""
     try:
@@ -251,109 +239,43 @@ def format_duration(seconds):
 def get_audio_stream_url(video_id):
     """
     Get direct audio stream URL using multiple methods with fallbacks
-    Priority: Invidious -> Piped -> yt-dlp
+    Priority: yt-dlp -> Invidious -> Piped
     """
     print(f"\n🎵 Getting stream URL for video: {video_id}")
     
-    # Method 1: Try Invidious (fastest and most reliable)
-    try:
-        url = get_stream_from_invidious(video_id)
-        if url:
-            print(f"✅ Invidious stream successful")
-            return url
-    except Exception as e:
-        print(f"⚠️ Invidious stream failed: {e}")
-    
-    # Method 2: Try Piped
-    try:
-        url = get_stream_from_piped(video_id)
-        if url:
-            print(f"✅ Piped stream successful")
-            return url
-    except Exception as e:
-        print(f"⚠️ Piped stream failed: {e}")
-    
-    # Method 3: Fallback to yt-dlp (may fail on Render without cookies)
+    # Method 1: Try yt-dlp first (most reliable for streaming)
     try:
         url = get_stream_from_ytdlp(video_id)
         if url:
             print(f"✅ yt-dlp stream successful")
             return url
     except Exception as e:
-        print(f"⚠️ yt-dlp stream failed: {e}")
+        print(f"⚠️ yt-dlp stream failed: {str(e)[:150]}")
     
-    # If all methods fail
+    # Method 2: Try Invidious
+    try:
+        url = get_stream_from_invidious(video_id)
+        if url:
+            print(f"✅ Invidious stream successful")
+            return url
+    except Exception as e:
+        print(f"⚠️ Invidious stream failed: {str(e)[:150]}")
+    
+    # Method 3: Try Piped
+    try:
+        url = get_stream_from_piped(video_id)
+        if url:
+            print(f"✅ Piped stream successful")
+            return url
+    except Exception as e:
+        print(f"⚠️ Piped stream failed: {str(e)[:150]}")
+    
     print(f"❌ All streaming methods failed for {video_id}")
     raise Exception("Could not retrieve stream URL from any source")
 
 
-def get_stream_from_invidious(video_id):
-    """Get stream URL from Invidious instances"""
-    for instance in INVIDIOUS_INSTANCES:
-        try:
-            response = requests.get(
-                f'{instance}/api/v1/videos/{video_id}',
-                timeout=15,
-                headers={'User-Agent': 'Mozilla/5.0'}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Try adaptive formats first (better quality)
-                audio_formats = [
-                    f for f in data.get('adaptiveFormats', [])
-                    if f.get('type', '').startswith('audio')
-                ]
-                
-                if audio_formats:
-                    # Sort by bitrate and get highest quality
-                    best_audio = max(audio_formats, key=lambda x: x.get('bitrate', 0))
-                    stream_url = best_audio.get('url')
-                    
-                    if stream_url:
-                        return stream_url
-        
-        except Exception as e:
-            print(f"Invidious instance {instance} failed: {e}")
-            continue
-    
-    raise Exception("All Invidious instances failed for streaming")
-
-
-def get_stream_from_piped(video_id):
-    """Get stream URL from Piped instances"""
-    for instance in PIPED_INSTANCES:
-        try:
-            response = requests.get(
-                f'{instance}/streams/{video_id}',
-                timeout=15,
-                headers={'User-Agent': 'Mozilla/5.0'}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Get audio streams
-                audio_streams = data.get('audioStreams', [])
-                
-                if audio_streams:
-                    # Get highest quality audio
-                    best_audio = max(audio_streams, key=lambda x: x.get('bitrate', 0))
-                    stream_url = best_audio.get('url')
-                    
-                    if stream_url:
-                        return stream_url
-        
-        except Exception as e:
-            print(f"Piped instance {instance} failed: {e}")
-            continue
-    
-    raise Exception("All Piped instances failed for streaming")
-
-
 def get_stream_from_ytdlp(video_id):
-    """Fallback to yt-dlp (may require cookies on some servers)"""
+    """Get stream using yt-dlp with enhanced options"""
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
     dl_opts = {
@@ -366,15 +288,75 @@ def get_stream_from_ytdlp(video_id):
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'referer': 'https://www.youtube.com/',
         'socket_timeout': 30,
+        'extractor_retries': 3,
     }
     
     try:
         with yt_dlp.YoutubeDL(dl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
-            return info.get('url', '')
+            stream_url = info.get('url', '')
+            if stream_url:
+                return stream_url
+            raise Exception("No stream URL in yt-dlp response")
     except Exception as e:
-        print(f"yt-dlp extraction failed: {e}")
         raise
+
+
+def get_stream_from_invidious(video_id):
+    """Get stream URL from Invidious instances"""
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            response = requests.get(
+                f'{instance}/api/v1/videos/{video_id}',
+                timeout=12,
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Try adaptive formats first
+                audio_formats = [
+                    f for f in data.get('adaptiveFormats', [])
+                    if f.get('type', '').startswith('audio')
+                ]
+                
+                if audio_formats:
+                    best_audio = max(audio_formats, key=lambda x: x.get('bitrate', 0))
+                    stream_url = best_audio.get('url')
+                    if stream_url:
+                        return stream_url
+        
+        except Exception as e:
+            continue
+    
+    raise Exception("All Invidious instances failed for streaming")
+
+
+def get_stream_from_piped(video_id):
+    """Get stream URL from Piped instances"""
+    for instance in PIPED_INSTANCES:
+        try:
+            response = requests.get(
+                f'{instance}/streams/{video_id}',
+                timeout=12,
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                audio_streams = data.get('audioStreams', [])
+                
+                if audio_streams:
+                    best_audio = max(audio_streams, key=lambda x: x.get('bitrate', 0))
+                    stream_url = best_audio.get('url')
+                    if stream_url:
+                        return stream_url
+        
+        except Exception as e:
+            continue
+    
+    raise Exception("All Piped instances failed for streaming")
 
 
 # ==================== RECOMMENDATIONS ====================
@@ -389,23 +371,16 @@ def get_recommendations(video_id, title, artist=""):
     if artist is None:
         artist = ""
     
-    # Method 1: Try Invidious recommendations
+    # Method 1: Try search-based recommendations (most reliable)
     try:
-        recommendations = get_recommendations_from_invidious(video_id)
-        if recommendations and len(recommendations) >= 8:
-            print(f"✅ Invidious recommendations: {len(recommendations)} results")
-            return recommendations[:12]
-    except Exception as e:
-        print(f"⚠️ Invidious recommendations failed: {e}")
-    
-    # Method 2: Try search-based recommendations
-    try:
-        if artist and artist.strip():
+        # Build search query safely
+        search_query = "popular music"
+        if artist and isinstance(artist, str) and artist.strip():
             search_query = f"{artist} official music"
-        elif title and title.strip():
-            search_query = f"{title} official audio"
-        else:
-            search_query = "popular music"
+        elif title and isinstance(title, str) and title.strip():
+            # Extract first few words from title
+            title_words = str(title).split()[:3]
+            search_query = " ".join(title_words) + " official audio"
         
         recommendations = youtube_search(search_query)
         
@@ -420,6 +395,26 @@ def get_recommendations(video_id, title, artist=""):
     except Exception as e:
         print(f"⚠️ Search-based recommendations failed: {e}")
     
+    # Method 2: Try Invidious recommendations
+    try:
+        recommendations = get_recommendations_from_invidious(video_id)
+        if recommendations and len(recommendations) >= 5:
+            print(f"✅ Invidious recommendations: {len(recommendations)} results")
+            return recommendations[:12]
+    except Exception as e:
+        print(f"⚠️ Invidious recommendations failed: {e}")
+    
+    # Method 3: Fallback to generic music search
+    try:
+        print("⚠️ Trying generic fallback")
+        recommendations = youtube_search("popular music 2025")
+        if recommendations:
+            recommendations = [r for r in recommendations if r.get('id') != video_id]
+            random.shuffle(recommendations)
+            return recommendations[:12]
+    except Exception as e:
+        print(f"⚠️ Fallback recommendations failed: {e}")
+    
     print("⚠️ No recommendations found")
     return []
 
@@ -430,7 +425,7 @@ def get_recommendations_from_invidious(video_id):
         try:
             response = requests.get(
                 f'{instance}/api/v1/videos/{video_id}',
-                timeout=10,
+                timeout=8,
                 headers={'User-Agent': 'Mozilla/5.0'}
             )
             
@@ -439,7 +434,7 @@ def get_recommendations_from_invidious(video_id):
                 recommended_videos = data.get('recommendedVideos', [])
                 
                 cleaned_results = []
-                for video in recommended_videos:
+                for video in recommended_videos[:15]:
                     try:
                         rec_id = video.get('videoId', '')
                         if not rec_id or rec_id == video_id:
@@ -448,19 +443,13 @@ def get_recommendations_from_invidious(video_id):
                         duration_seconds = video.get('lengthSeconds', 0)
                         duration = format_duration(duration_seconds)
                         
-                        # Get thumbnails
                         thumbnails = video.get('videoThumbnails', [])
-                        thumbnail = ''
+                        thumbnail = f'https://i.ytimg.com/vi/{rec_id}/hqdefault.jpg'
                         if thumbnails:
                             for t in thumbnails:
                                 if t.get('quality') in ['high', 'maxres']:
-                                    thumbnail = t.get('url', '')
+                                    thumbnail = t.get('url', thumbnail)
                                     break
-                            if not thumbnail:
-                                thumbnail = thumbnails[0].get('url', '')
-                        
-                        if not thumbnail:
-                            thumbnail = f'https://i.ytimg.com/vi/{rec_id}/hqdefault.jpg'
                         
                         cleaned_results.append({
                             'id': rec_id,
@@ -470,14 +459,12 @@ def get_recommendations_from_invidious(video_id):
                             'artist': video.get('author', 'Unknown Artist'),
                         })
                     except Exception as e:
-                        print(f"Error processing recommendation: {e}")
                         continue
                 
                 if cleaned_results:
                     return cleaned_results
         
         except Exception as e:
-            print(f"Invidious instance {instance} failed for recommendations: {e}")
             continue
     
     raise Exception("All Invidious instances failed for recommendations")
