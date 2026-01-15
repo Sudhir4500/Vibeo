@@ -268,13 +268,18 @@ def get_audio_stream_url(video_id):
 
 def get_stream_from_invidious(video_id):
     """Get stream URL from Invidious instances - MOST RELIABLE"""
+    errors = []
+    
     for instance in INVIDIOUS_INSTANCES:
         try:
+            print(f"  → Trying {instance}")
             response = requests.get(
                 f'{instance}/api/v1/videos/{video_id}',
                 timeout=10,
                 headers={'User-Agent': 'Mozilla/5.0'}
             )
+            
+            print(f"  → Status: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -285,62 +290,97 @@ def get_stream_from_invidious(video_id):
                     if f.get('type', '').startswith('audio')
                 ]
                 
+                print(f"  → Found {len(audio_formats)} audio formats")
+                
                 if audio_formats:
                     # Sort by bitrate and get highest quality
                     best_audio = max(audio_formats, key=lambda x: x.get('bitrate', 0))
                     stream_url = best_audio.get('url')
                     
                     if stream_url:
+                        print(f"  ✅ Got stream URL from {instance}")
                         return stream_url
                 
                 # Fallback: Try regular formats if adaptive not available
                 formats = data.get('formatStreams', [])
+                print(f"  → Found {len(formats)} regular formats")
+                
                 if formats:
                     # Get first available format
                     for fmt in formats:
                         stream_url = fmt.get('url')
                         if stream_url:
+                            print(f"  ✅ Got stream URL from {instance} (regular format)")
                             return stream_url
+            
+            errors.append(f"{instance}: HTTP {response.status_code}")
         
         except Exception as e:
+            error_msg = str(e)[:80]
+            print(f"  ✗ {instance} error: {error_msg}")
+            errors.append(f"{instance}: {error_msg}")
             continue
+    
+    print(f"  ❌ All Invidious instances failed:")
+    for err in errors:
+        print(f"     - {err}")
     
     raise Exception("All Invidious instances failed")
 
 
 def get_stream_from_piped(video_id):
     """Get stream URL from Piped instances"""
+    errors = []
+    
     for instance in PIPED_INSTANCES:
         try:
+            print(f"  → Trying {instance}")
             response = requests.get(
                 f'{instance}/streams/{video_id}',
                 timeout=10,
                 headers={'User-Agent': 'Mozilla/5.0'}
             )
             
+            print(f"  → Status: {response.status_code}")
+            
             if response.status_code == 200:
                 data = response.json()
                 
                 # Try audio streams first
                 audio_streams = data.get('audioStreams', [])
+                print(f"  → Found {len(audio_streams)} audio streams")
+                
                 if audio_streams:
                     # Get highest quality
                     best_audio = max(audio_streams, key=lambda x: x.get('bitrate', 0))
                     stream_url = best_audio.get('url')
                     if stream_url:
+                        print(f"  ✅ Got stream URL from {instance}")
                         return stream_url
                 
                 # Fallback: Try video streams (they have audio)
                 video_streams = data.get('videoStreams', [])
+                print(f"  → Found {len(video_streams)} video streams")
+                
                 if video_streams:
                     for stream in video_streams:
                         if stream.get('videoOnly') == False:
                             stream_url = stream.get('url')
                             if stream_url:
+                                print(f"  ✅ Got stream URL from {instance} (video stream)")
                                 return stream_url
+            
+            errors.append(f"{instance}: HTTP {response.status_code}")
         
         except Exception as e:
+            error_msg = str(e)[:80]
+            print(f"  ✗ {instance} error: {error_msg}")
+            errors.append(f"{instance}: {error_msg}")
             continue
+    
+    print(f"  ❌ All Piped instances failed:")
+    for err in errors:
+        print(f"     - {err}")
     
     raise Exception("All Piped instances failed")
 

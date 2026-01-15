@@ -22,4 +22,5 @@ urlpatterns = [
     # Discovery / Home
     path('discovery/', views.get_home_discovery, name='get_home_discovery'),
     path('section/', views.get_section_songs, name='get_section_songs'),
+     path('test-streaming/', views.test_streaming_services, name='test_streaming'),
 ]

@@ -209,6 +209,64 @@ def stream_music(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def test_streaming_services(request):
+    """
+    Test endpoint to check which streaming services are working
+    """
+    video_id = request.query_params.get('id', 'dQw4w9WgXcQ')  # Rick Astley as default test
+    
+    results = {
+        'video_id': video_id,
+        'test_time': str(request),
+        'services': {}
+    }
+    
+    # Test Invidious
+    print("\n🧪 Testing Invidious instances...")
+    from .services import INVIDIOUS_INSTANCES, get_stream_from_invidious
+    results['services']['invidious'] = {
+        'instances': INVIDIOUS_INSTANCES,
+        'status': 'testing...'
+    }
+    try:
+        url = get_stream_from_invidious(video_id)
+        results['services']['invidious']['status'] = 'SUCCESS'
+        results['services']['invidious']['url'] = url[:100] + '...'
+    except Exception as e:
+        results['services']['invidious']['status'] = f'FAILED: {str(e)}'
+    
+    # Test Piped
+    print("\n🧪 Testing Piped instances...")
+    from .services import PIPED_INSTANCES, get_stream_from_piped
+    results['services']['piped'] = {
+        'instances': PIPED_INSTANCES,
+        'status': 'testing...'
+    }
+    try:
+        url = get_stream_from_piped(video_id)
+        results['services']['piped']['status'] = 'SUCCESS'
+        results['services']['piped']['url'] = url[:100] + '...'
+    except Exception as e:
+        results['services']['piped']['status'] = f'FAILED: {str(e)}'
+    
+    # Test yt-dlp
+    print("\n🧪 Testing yt-dlp...")
+    from .services import get_stream_from_ytdlp
+    results['services']['ytdlp'] = {
+        'status': 'testing...'
+    }
+    try:
+        url = get_stream_from_ytdlp(video_id)
+        results['services']['ytdlp']['status'] = 'SUCCESS'
+        results['services']['ytdlp']['url'] = url[:100] + '...'
+    except Exception as e:
+        results['services']['ytdlp']['status'] = f'FAILED: {str(e)[:150]}'
+    
+    return Response(results, status=status.HTTP_200_OK)
+
+
 # ==================== RECOMMENDATIONS ====================
 
 @api_view(['GET'])
