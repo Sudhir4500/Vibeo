@@ -47,20 +47,18 @@ def toggle_like_song(request):
     Optional: title, artist, thumbnail, duration
     """
     try:
-        data = request.data  # DRF automatically parses JSON
+        data = request.data
         vid_id = data.get('id')
         
         if not vid_id:
             return Response({'error': 'Missing song ID'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            # 1. Get or create the "Liked Songs" playlist for this user
             playlist, _ = Playlist.objects.get_or_create(
                 user=request.user,
                 name="Liked Songs"
             )
 
-            # 2. Get or create the Song in your DB using video_id
             song, created = Song.objects.get_or_create(
                 video_id=vid_id,
                 defaults={
@@ -71,7 +69,6 @@ def toggle_like_song(request):
                 }
             )
             
-            # If song already exists, update its metadata
             if not created:
                 song.title = data.get('title', song.title)
                 song.artist = data.get('artist', song.artist)
@@ -79,7 +76,6 @@ def toggle_like_song(request):
                 song.duration = str(data.get('duration', song.duration))
                 song.save()
 
-            # 3. Toggle logic - Check if song exists in this playlist
             if song in playlist.songs.all():
                 playlist.songs.remove(song)
                 return Response({
@@ -150,7 +146,6 @@ def get_liked_songs(request):
             name="Liked Songs"
         )
         
-        # Return songs in reverse order (newest first)
         songs = playlist.songs.all().order_by('-id')
         serializer = SongSerializer(songs, many=True)
         
@@ -239,12 +234,11 @@ def recommend_songs(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ==================== DISCOVERY / HOME ====================
+# ==================== OPTIMIZED DISCOVERY ====================
 
 def _get_search_query_for_section(section_type, user):
     """
     Helper function to get search query based on section type.
-    Centralizes search query logic to avoid duplication.
     """
     if section_type == 'trending':
         return "top hits 2025"
@@ -273,122 +267,101 @@ def _get_search_query_for_section(section_type, user):
 @permission_classes([IsAuthenticated])
 def get_home_discovery(request):
     """
-    Spotify-style home screen with diverse content sections.
-    Returns: Trending, Personalized Mix, New Releases, Popular Artists, and Genre-based playlists
+    OPTIMIZED: Fast home screen with minimal API calls
+    Strategy: Do ONE search and reuse results across sections
     """
     try:
+        print("\n🏠 Starting OPTIMIZED Home Discovery")
         user = request.user
         sections = []
-
-        # 1. TRENDING NOW
-        print("=" * 50)
-        print("🏠 Starting Home Discovery")
-        print("=" * 50)
         
-        trending_queries = ["pop music 2025", "trending music", "top songs"]
-        trending = []
-        for query in trending_queries:
-            print(f"\n📊 Trying Trending query: {query}")
-            try:
-                trending = youtube_search(query)
-                if trending and len(trending) >= 6:
-                    print(f"✅ Success! Got {len(trending)} results")
-                    break
-            except Exception as e:
-                print(f"❌ Query failed: {e}")
-                continue
+        # Strategy: Do just 2-3 searches total and slice them differently
         
-        if trending:
-            sections.append({
-                'title': 'Trending Now',
-                'type': 'horizontal',
-                'data': trending[:12]
-            })
-            print(f"✅ Added Trending section with {len(trending[:12])} items")
-
-        # 2. MADE FOR YOU
-        print("\n💝 Building Made For You section...")
+        # 1. PRIMARY SEARCH - Get trending/popular music
+        print("📊 Fetching primary content...")
         try:
-            personalized = youtube_search(_get_search_query_for_section('personalized', user))
-            if personalized:
+            primary_results = youtube_search("popular music 2025")
+            
+            if primary_results and len(primary_results) >= 8:
+                # Split results across multiple sections
                 sections.append({
-                    'title': 'Made For You',
+                    'title': 'Trending Now',
                     'type': 'horizontal',
-                    'data': personalized[:12]
+                    'data': primary_results[0:6]  # First 6
                 })
-                print(f"✅ Added Made For You with {len(personalized[:12])} items")
+                
+                sections.append({
+                    'title': 'Popular Right Now',
+                    'type': 'horizontal',
+                    'data': primary_results[6:12] if len(primary_results) > 6 else primary_results[0:6]
+                })
+                
+                print(f"✅ Primary search successful: {len(primary_results)} results")
+            else:
+                print("⚠️ Primary search returned insufficient results")
+        
         except Exception as e:
-            print(f"❌ Made For You error: {e}")
-
-        # 3. NEW RELEASES
-        print("\n🆕 Fetching New Releases...")
+            print(f"❌ Primary search failed: {e}")
+        
+        # 2. SECONDARY SEARCH - Personalized (only if we have liked songs)
+        print("💝 Checking for personalized content...")
         try:
-            new_releases = youtube_search("new music 2025")
+            last_liked = Song.objects.filter(
+                playlist__user=user,
+                playlist__name="Liked Songs"
+            ).order_by('-id').first()
+            
+            if last_liked and last_liked.artist:
+                personalized_query = f"{last_liked.artist} music"
+                personalized = youtube_search(personalized_query)
+                
+                if personalized:
+                    sections.append({
+                        'title': 'Made For You',
+                        'type': 'horizontal',
+                        'data': personalized[:8]
+                    })
+                    print(f"✅ Personalized section added")
+        except Exception as e:
+            print(f"⚠️ Personalized section skipped: {e}")
+        
+        # 3. TERTIARY SEARCH - New releases (optional, only if time permits)
+        print("🆕 Fetching new releases...")
+        try:
+            new_releases = youtube_search("new music")
+            
             if new_releases:
                 sections.append({
                     'title': 'New Releases',
                     'type': 'horizontal',
-                    'data': new_releases[:12]
+                    'data': new_releases[:8]
                 })
-                print(f"✅ Added New Releases with {len(new_releases[:12])} items")
+                print(f"✅ New releases added")
         except Exception as e:
-            print(f"❌ New Releases error: {e}")
-
-        # 4. POPULAR RIGHT NOW
-        print("\n⭐ Fetching Popular content...")
-        try:
-            popular = youtube_search("popular songs right now")
-            if popular:
-                sections.append({
-                    'title': 'Popular Right Now',
-                    'type': 'horizontal',
-                    'data': popular[:12]
-                })
-                print(f"✅ Added Popular with {len(popular[:12])} items")
-        except Exception as e:
-            print(f"❌ Popular error: {e}")
-
-        # 5. QUICK PICKS
-        print("\n⚡ Fetching Quick Picks...")
-        try:
-            quick_picks = youtube_search("music 2025")
-            if quick_picks:
-                sections.append({
-                    'title': 'Quick Picks',
-                    'type': 'horizontal',
-                    'data': quick_picks[:10]
-                })
-                print(f"✅ Added Quick Picks with {len(quick_picks[:10])} items")
-        except Exception as e:
-            print(f"❌ Quick Picks error: {e}")
-
+            print(f"⚠️ New releases skipped: {e}")
+        
         # Filter out empty sections
         sections = [s for s in sections if s.get('data') and len(s['data']) > 0]
-
-        print(f"\n{'=' * 50}")
-        print(f"✅ FINAL: Returning {len(sections)} sections")
-        for section in sections:
-            print(f"  - {section['title']}: {len(section['data'])} items")
-        print(f"{'=' * 50}\n")
-
-        # Emergency fallback
+        
+        print(f"\n✅ Discovery complete: {len(sections)} sections ready")
+        
+        # Absolute minimum fallback - return something
         if not sections:
-            print("⚠️  No sections found, using emergency fallback")
-            fallback = youtube_search("music")
-            if fallback:
-                sections.append({
-                    'title': 'Discover Music',
-                    'type': 'horizontal',
-                    'data': fallback[:12]
-                })
-
+            print("⚠️ No sections created, using emergency fallback")
+            sections = [{
+                'title': 'Discover Music',
+                'type': 'horizontal',
+                'data': []
+            }]
+        
         return Response({'sections': sections}, status=status.HTTP_200_OK)
-
+    
     except Exception as e:
         print(f"\n❌ CRITICAL ERROR in get_home_discovery: {str(e)}")
         import traceback
         traceback.print_exc()
         
+        # Always return valid response structure
         return Response({
             'sections': [{
                 'title': 'Music',
@@ -420,17 +393,20 @@ def get_section_songs(request):
         # Perform search
         results = youtube_search(search_query)
         
-        # If we need more results, do additional search
-        if len(results) < limit and len(results) < 50:
-            additional_query = f"{search_query} official audio"
-            additional_results = youtube_search(additional_query)
-            
-            # Merge and remove duplicates
-            existing_ids = {song['id'] for song in results}
-            for song in additional_results:
-                if song['id'] not in existing_ids:
-                    results.append(song)
-                    existing_ids.add(song['id'])
+        # Only do additional search if we got very few results
+        if len(results) < 5 and len(results) > 0:
+            try:
+                additional_query = f"{search_query} official"
+                additional_results = youtube_search(additional_query)
+                
+                # Merge and remove duplicates
+                existing_ids = {song['id'] for song in results}
+                for song in additional_results:
+                    if song['id'] not in existing_ids:
+                        results.append(song)
+                        existing_ids.add(song['id'])
+            except:
+                pass  # If additional search fails, just use what we have
         
         # Limit results
         results = results[:limit]
